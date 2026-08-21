@@ -1,0 +1,40 @@
+[workspace]
+members = [
+    "crates/moredata-core",
+    "crates/moredata-runtime",
+    "crates/moredata-audio",
+    "crates/moredata-plugin",
+    "crates/moredata-cli",
+    "crates/moredata-tui",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+authors = ["Egor Korostelev"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Egorich-print/MoreData"
+
+[workspace.dependencies]
+moredata-core = { path = "crates/moredata-core" }
+moredata-runtime = { path = "crates/moredata-runtime" }
+moredata-audio = { path = "crates/moredata-audio" }
+moredata-plugin = { path = "crates/moredata-plugin" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+hound = "3.5"
+cpal = "0.15"
+ratatui = "0.29"
+crossterm = "0.28"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+panic = "unwind"

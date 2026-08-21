@@ -1,0 +1,8 @@
+target/
+.DS_Store
+*.log
+.env
+*.wav
+!tests/fixtures/*.wav
+.idea/
+.vscode/
