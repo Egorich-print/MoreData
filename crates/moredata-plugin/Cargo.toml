@@ -1,0 +1,14 @@
+[package]
+name = "moredata-plugin"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Plugin capability model for MoreData (native first; CLAP/LV2/VST3 later)"
+publish = false
+
+[dependencies]
+serde.workspace = true
+moredata-core.workspace = true

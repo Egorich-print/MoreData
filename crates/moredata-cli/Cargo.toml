@@ -1,0 +1,23 @@
+[package]
+name = "moredata-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Machine-readable control plane for MoreData"
+publish = false
+
+[[bin]]
+name = "moredata"
+path = "src/main.rs"
+
+[dependencies]
+moredata-core.workspace = true
+moredata-runtime.workspace = true
+moredata-audio.workspace = true
+moredata-plugin.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true

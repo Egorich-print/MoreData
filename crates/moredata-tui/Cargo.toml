@@ -1,0 +1,21 @@
+[package]
+name = "moredata-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Optional diagnostic TUI for MoreData (control plane only)"
+publish = false
+
+[[bin]]
+name = "moredata-tui"
+path = "src/main.rs"
+
+[dependencies]
+moredata-core.workspace = true
+moredata-audio.workspace = true
+moredata-plugin.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true

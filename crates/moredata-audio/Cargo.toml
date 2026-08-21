@@ -1,0 +1,18 @@
+[package]
+name = "moredata-audio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Audio backends for MoreData (cpal host, wav, null; PipeWire adapter later)"
+publish = false
+
+[dependencies]
+moredata-core.workspace = true
+moredata-runtime.workspace = true
+thiserror.workspace = true
+hound.workspace = true
+serde.workspace = true
+cpal.workspace = true
