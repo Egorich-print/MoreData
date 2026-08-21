@@ -1,0 +1,10 @@
+{
+  "sample_rate": 48000,
+  "nodes": [
+    {"id": "osc", "kind": "oscillator", "params": {"freq": 440.0, "amp": 0.25}},
+    {"id": "out", "kind": "output"}
+  ],
+  "connections": [
+    {"from": ["osc", "out"], "to": ["out", "in"]}
+  ]
+}
