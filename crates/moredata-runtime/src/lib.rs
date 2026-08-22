@@ -1,5 +1,7 @@
 //! Realtime execution wrapper. No filesystem, network, or logging in process().
 
+pub mod link;
+
 use moredata_core::{CompiledGraph, Diagnostics, ProcessState};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;

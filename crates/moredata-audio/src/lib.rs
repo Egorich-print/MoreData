@@ -8,7 +8,7 @@ use moredata_core::Diagnostics;
 use serde::Serialize;
 use thiserror::Error;
 
-pub use cpal_backend::{CpalBackend, play_once};
+pub use cpal_backend::{CpalBackend, PlaySession, play, play_once};
 pub use null::NullBackend;
 pub use wav::render_wav;
 

@@ -5,7 +5,7 @@
 | ID | Risk | Impact | Mitigation | Status |
 |----|------|--------|------------|--------|
 | R1 | Accidental Pd/JUCE coupling | Mission failure | No libpd/JUCE in core Cargo.toml; Pd is importer only | accepted |
-| R2 | Mutex in audio callback (Hibiki pattern) | xruns, priority inversion | Slot/atomic params; graph committed, not mutated | accepted |
+| R2 | Mutex in audio callback (Hibiki pattern) | xruns, priority inversion | **Resolved (M5.1)**: SPSC tri-state mailbox, callback owns RtLink via FnMut; see ADR-0009. Residual: single-slot mailbox spins control side if publish outpaces retire | resolved |
 | R3 | PipeWire not on macOS host | Cannot verify Linux backend tonight | cpal/CoreAudio as host I/O; PipeWire adapter documented | accepted |
 | R4 | VST3 GUI-required plugins | Headless devices unusable | Capability scanner; CLAP first | accepted |
 | R5 | Dynamic graph in callback | allocation, topology races | Commit model: edit on control plane, swap generation | accepted |

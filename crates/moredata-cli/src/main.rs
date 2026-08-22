@@ -45,6 +45,10 @@ enum Commands {
         #[arg(long, default_value_t = 1.0)]
         seconds: f32,
     },
+    /// Stream a project to the device until interrupted (lock-free RT link).
+    Serve {
+        file: PathBuf,
+    },
     Plugins,
 }
 
@@ -202,6 +206,31 @@ fn run(cli: &Cli) -> Result<(), String> {
                     seconds: *seconds,
                 },
             )
+        }
+        Commands::Serve { file } => {
+            let g = load_graph(file)?;
+            let (cg, st) =
+                CompiledGraph::compile(&g, CompileOptions::default()).map_err(|e| e.to_string())?;
+            let rt = Runtime::new(cg, st, "cpal");
+            let session = moredata_audio::play(rt).map_err(|e| e.to_string())?;
+            #[derive(Serialize)]
+            struct Out {
+                ok: bool,
+                backend: &'static str,
+                note: &'static str,
+            }
+            print_json(
+                cli.json,
+                &Out {
+                    ok: true,
+                    backend: "cpal",
+                    note: "streaming; ctrl-c to stop",
+                },
+            )?;
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                let _ = session.poll_retired();
+            }
         }
         Commands::Plugins => print_json(cli.json, &builtin_catalog()),
     }
