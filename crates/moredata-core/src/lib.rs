@@ -3,12 +3,14 @@
 mod compile;
 mod dsp;
 mod error;
+pub mod event;
 mod graph;
 mod project;
 mod report;
 
-pub use compile::{CompileOptions, CompiledGraph, ProcessState};
+pub use compile::{CompileOptions, CompiledGraph, ParamSnapshot, ProcessState};
 pub use error::GraphError;
+pub use event::{Event, EventKind, EventQueue};
 pub use graph::{Connection, Graph, Node, NodeId, NodeKind, PortDir, PortSpec};
 pub use project::Project;
 pub use report::{Diagnostics, StatusReport};

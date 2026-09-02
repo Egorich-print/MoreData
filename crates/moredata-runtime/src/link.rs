@@ -140,6 +140,12 @@ impl RtLink {
         }
     }
 
+    /// Control-side view of the active engine's event queue (test/diagnostic
+    /// convenience). The RT thread reads the same queue in `process`.
+    pub fn events(&self) -> Option<&moredata_core::EventQueue<256>> {
+        self.current.as_ref().map(|rt| rt.events())
+    }
+
     pub fn has_engine(&self) -> bool {
         self.current.is_some()
     }

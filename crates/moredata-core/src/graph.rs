@@ -19,6 +19,7 @@ pub enum NodeKind {
     Gain,
     Mixer,
     Output,
+    Gate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +90,18 @@ impl NodeKind {
                 dir: PortDir::In,
                 channels: 1,
             }],
+            NodeKind::Gate => &[
+                PortSpec {
+                    name: "in",
+                    dir: PortDir::In,
+                    channels: 1,
+                },
+                PortSpec {
+                    name: "out",
+                    dir: PortDir::Out,
+                    channels: 1,
+                },
+            ],
         }
     }
 
@@ -102,6 +115,10 @@ impl NodeKind {
             NodeKind::Gain => {
                 m.insert("gain".into(), 1.0);
             }
+            NodeKind::Gate => {
+                m.insert("attack".into(), 0.005);
+                m.insert("release".into(), 0.08);
+            }
             NodeKind::Mixer | NodeKind::Output => {}
         }
         m
@@ -114,6 +131,9 @@ impl NodeKind {
             }
             (NodeKind::Oscillator, "amp") => value.is_finite() && (0.0..=1.0).contains(&value),
             (NodeKind::Gain, "gain") => value.is_finite() && (0.0..=8.0).contains(&value),
+            (NodeKind::Gate, "attack" | "release") => {
+                value.is_finite() && (0.0..=1.0).contains(&value)
+            }
             _ => false,
         }
     }
