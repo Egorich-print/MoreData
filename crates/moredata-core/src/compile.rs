@@ -121,6 +121,31 @@ pub struct ProcessState {
     pub max_block: usize,
 }
 
+impl ProcessState {
+    /// Borrow the underlying buffers mutably.
+    #[allow(dead_code)]
+    pub fn buffers_mut(&mut self) -> &mut Vec<f32> {
+        &mut self.buffers
+    }
+
+    /// Borrow the underlying states mutably.
+    #[allow(dead_code)]
+    pub fn states_mut(&mut self) -> &mut Vec<NodeState> {
+        &mut self.states
+    }
+
+    /// Borrow a single node buffer `frames`-wide as `&mut [f32]`.
+    pub fn node_buf(&mut self, idx: usize, frames: usize) -> &mut [f32] {
+        let mb = self.max_block;
+        &mut self.buffers[idx * mb..idx * mb + frames]
+    }
+
+    /// Borrow a single node state mutably.
+    pub fn node_state(&mut self, idx: usize) -> &mut NodeState {
+        &mut self.states[idx]
+    }
+}
+
 impl CompiledGraph {
     /// Monotonic engine identity for parameter snapshot validation.
     pub fn generation(&self) -> u64 {

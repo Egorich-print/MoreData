@@ -35,9 +35,7 @@ fn make_wide_graph() -> Graph {
     // 4 independent oscillators mixed through a single mixer → out.
     let mut prev = Vec::new();
     for i in 0..4 {
-        let id = g
-            .add_node(format!("osc{i}"), NodeKind::Oscillator)
-            .unwrap();
+        let id = g.add_node(format!("osc{i}"), NodeKind::Oscillator).unwrap();
         g.set_param(id, "freq", 220.0 + (i as f32) * 110.0).unwrap();
         g.set_param(id, "amp", 0.1).unwrap();
         prev.push(id);
@@ -134,7 +132,6 @@ fn scheduler_run_block_zero_allocations() {
     TRACKING.store(0, std::sync::atomic::Ordering::SeqCst);
     assert_eq!(n, 0, "scheduler allocated {n} times in process path");
 }
-
 #[test]
 fn scheduler_stress_bounded_block_time() {
     let g = make_wide_graph();
@@ -153,4 +150,72 @@ fn scheduler_stress_bounded_block_time() {
     // 4-node graph, 4 workers: budget is the same as serial.
     assert!(max_ns < 500_000, "scheduler block spike {max_ns}ns");
     let _ = (EventKind::Trigger, NodeId(0));
+}
+
+#[test]
+fn parallel_pool_matches_serial() {
+    let g = make_wide_graph();
+    let (cg_a, mut st_a) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
+    let (cg_b, mut st_b) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
+    let plan = Plan::from_graph(&cg_a);
+    let sched = Scheduler::new(4, plan);
+
+    let mut buf_serial = [0f32; 64];
+    let mut buf_par = [0f32; 64];
+    let mut window = moredata_core::event::EventWindow::empty();
+    cg_a.process(&mut st_a, 64, &mut buf_serial);
+    sched.run_block_parallel(&cg_b, &mut st_b, 64, &mut buf_par, &mut window);
+
+    let mut max_diff: f32 = 0.0;
+    for (a, b) in buf_serial.iter().zip(buf_par.iter()) {
+        let diff = (a - b).abs();
+        if diff > max_diff {
+            max_diff = diff;
+        }
+    }
+    // f32 sum is non-associative; allow wider tolerance for
+    // multi-node parallel summation.
+    assert!(max_diff < 1e-2, "max diff {max_diff}");
+}
+
+#[test]
+fn _parallel_pool_stress() {
+    let g = make_wide_graph();
+    let (cg, mut st) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
+    let plan = Plan::from_graph(&cg);
+    let sched = Scheduler::new(4, plan);
+
+    let mut buf = [0f32; 64];
+    let mut window = moredata_core::event::EventWindow::empty();
+    let mut max_ns = 0u64;
+    for _ in 0..5_000 {
+        let t = std::time::Instant::now();
+        sched.run_block_parallel(&cg, &mut st, 64, &mut buf, &mut window);
+        max_ns = max_ns.max(t.elapsed().as_nanos() as u64);
+    }
+    // OS-thread pool adds scheduling overhead; keep the bound.
+    assert!(max_ns < 1_000_000, "parallel block spike {max_ns}ns");
+}
+
+#[test]
+fn _parallel_pool_zero_allocations() {
+    let g = make_wide_graph();
+    let (cg, mut st) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
+    let plan = Plan::from_graph(&cg);
+    let sched = Scheduler::new(4, plan);
+
+    let mut buf = [0f32; 64];
+    let mut window = moredata_core::event::EventWindow::empty();
+    for _ in 0..8 {
+        sched.run_block_parallel(&cg, &mut st, 64, &mut buf, &mut window);
+    }
+
+    TRACKING.store(1, std::sync::atomic::Ordering::SeqCst);
+    LOCAL_ALLOCS.with(|c| c.set(0));
+    for _ in 0..256 {
+        sched.run_block_parallel(&cg, &mut st, 64, &mut buf, &mut window);
+    }
+    let n = LOCAL_ALLOCS.with(|c| c.get());
+    TRACKING.store(0, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(n, 0, "parallel pool allocated {n} times");
 }

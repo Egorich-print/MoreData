@@ -1,7 +1,7 @@
 //! Native graph + DSP kernel. No audio I/O, no plugins, no Pd.
 
 mod compile;
-mod dsp;
+pub mod dsp;
 mod error;
 pub mod event;
 mod graph;
