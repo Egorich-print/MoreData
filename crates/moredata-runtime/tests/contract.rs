@@ -27,7 +27,6 @@ unsafe impl std::alloc::GlobalAlloc for CountAlloc {
 #[global_allocator]
 static GLOBAL: CountAlloc = CountAlloc;
 
-
 fn gate_graph(freq: f32) -> (Graph, NodeId, NodeId, NodeId) {
     let mut g = Graph::new(48_000).unwrap();
     let osc = g.add_node("osc", NodeKind::Oscillator).unwrap();

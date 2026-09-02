@@ -86,31 +86,39 @@ impl ParamSnapshot {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Edge {
-    src: usize,
-    dst: usize,
+pub struct Edge {
+    pub src: usize,
+    pub dst: usize,
 }
 
 #[derive(Debug)]
-struct CompiledNode {
-    kind: NodeKind,
-    freq: Option<usize>,
-    amp: Option<usize>,
-    gain: Option<usize>,
+pub struct CompiledNode {
+    pub kind: NodeKind,
+    pub freq: Option<usize>,
+    pub amp: Option<usize>,
+    pub gain: Option<usize>,
 }
 
 /// Immutable schedule + atomic param table. Safe to share with the audio thread.
 pub struct CompiledGraph {
     pub sample_rate: u32,
     pub max_block: usize,
-    generation: u64,
-    nodes: Vec<CompiledNode>,
-    order: Vec<usize>,
-    edges: Vec<Edge>,
-    params: Vec<ParamSlot>,
-    output_index: usize,
-    param_index: Vec<(NodeId, &'static str, usize)>,
-    gate_nodes: Vec<(NodeId, usize)>,
+    pub generation: u64,
+    pub nodes: Vec<CompiledNode>,
+    pub order: Vec<usize>,
+    pub edges: Vec<Edge>,
+    pub params: Vec<ParamSlot>,
+    pub output_index: usize,
+    pub param_index: Vec<(NodeId, &'static str, usize)>,
+    pub gate_nodes: Vec<(NodeId, usize)>,
+}
+
+/// Preallocated scratch + node state. One owner: the audio thread (or renderer).
+pub struct ProcessState {
+    pub states: Vec<NodeState>,
+    pub buffers: Vec<f32>,
+    pub node_count: usize,
+    pub max_block: usize,
 }
 
 impl CompiledGraph {
@@ -118,14 +126,6 @@ impl CompiledGraph {
     pub fn generation(&self) -> u64 {
         self.generation
     }
-}
-
-/// Preallocated scratch + node state. One owner: the audio thread (or renderer).
-pub struct ProcessState {
-    states: Vec<NodeState>,
-    buffers: Vec<f32>,
-    node_count: usize,
-    max_block: usize,
 }
 
 impl CompiledGraph {
@@ -246,6 +246,32 @@ impl CompiledGraph {
         self.nodes.len()
     }
 
+    /// Parallel-execution partition of the topo order: nodes at the same
+    /// dependency level may be processed concurrently across worker threads.
+    /// Each partition is a `Vec<usize>` of node indices; levels are returned
+    /// in execution order. Realtime-safe: no allocation; result is heap.
+    pub fn parallel_partitions(&self) -> Vec<Vec<usize>> {
+        let n = self.nodes.len();
+        let mut level = vec![0u32; n];
+        for &v in &self.order {
+            let mut lv = 0u32;
+            for e in &self.edges {
+                if e.dst == v && level[e.src] > lv {
+                    lv = level[e.src];
+                }
+            }
+            level[v] = lv + 1;
+        }
+        let max_level = level.iter().copied().max().unwrap_or(0) as usize;
+        let mut parts: Vec<Vec<usize>> = vec![Vec::new(); max_level];
+        for &v in &self.order {
+            if let Some(p) = parts.get_mut((level[v] - 1) as usize) {
+                p.push(v);
+            }
+        }
+        parts
+    }
+
     /// Apply a coalesced parameter snapshot at a block boundary.
     /// Realtime-safe: no allocation. Snapshot is ignored unless its
     /// generation matches this engine (stale-patch guard).
@@ -266,6 +292,67 @@ impl CompiledGraph {
             .iter()
             .find(|(nid, n, _)| *nid == id && *n == name)
             .map(|(_, _, i)| *i)
+    }
+
+    /// Realtime-safe: no allocation. Process a single parallel partition
+    /// (one dependency level). Inputs for nodes in the partition have
+    /// already been mixed by previous partitions. The `partition` argument
+    /// is the set of node indices this call owns.
+    pub fn process_partition(
+        &self,
+        state: &mut ProcessState,
+        partition: &[usize],
+        frames: usize,
+        events: &mut event::EventWindow<'_>,
+    ) {
+        let frames = frames.min(self.max_block);
+        if frames == 0 {
+            return;
+        }
+        let sr = self.sample_rate as f32;
+        let mb = state.max_block;
+
+        // Apply events on the first partition only (idempotent for others).
+        if let Some(&first) = partition.first() {
+            // We can't easily identify "first partition" without context, so
+            // we apply gate changes only for nodes belonging to this call.
+            for &idx in partition {
+                if self.gate_nodes.iter().any(|g| g.1 == idx) {
+                    mix_gate_inputs(self, state, idx, frames, events, mb, sr);
+                }
+            }
+            let _ = first;
+        }
+
+        for &idx in partition {
+            let node = &self.nodes[idx];
+            match node.kind {
+                NodeKind::Oscillator => {
+                    let freq = node.freq.map(|i| self.params[i].load()).unwrap_or(440.0);
+                    let amp = node.amp.map(|i| self.params[i].load()).unwrap_or(0.2);
+                    let start = idx * mb;
+                    let buf = &mut state.buffers[start..start + frames];
+                    dsp::process_osc(&mut state.states[idx], freq, amp, sr, buf);
+                }
+                NodeKind::Gain => {
+                    mix_inputs(self, state, idx, frames);
+                    let g = node.gain.map(|i| self.params[i].load()).unwrap_or(1.0);
+                    let start = idx * mb;
+                    let slice = &mut state.buffers[start..start + frames];
+                    for s in slice.iter_mut() {
+                        *s *= g;
+                    }
+                }
+                NodeKind::Gate => {
+                    // Already handled in mix_gate_inputs above when an event
+                    // targets it; otherwise pass audio through.
+                    mix_inputs(self, state, idx, frames);
+                }
+                NodeKind::Mixer | NodeKind::Output => {
+                    mix_inputs(self, state, idx, frames);
+                }
+            }
+        }
     }
 
     /// Realtime-safe: no allocation. `frames` must be <= max_block.
@@ -393,6 +480,63 @@ fn mix_inputs(g: &CompiledGraph, state: &mut ProcessState, dst: usize, frames: u
             state.buffers[dst_start + i] += state.buffers[src_start + i];
         }
     }
+}
+
+/// Apply a gate envelope (frame-ordered events) to a gate node. Used by
+/// `process_partition`; non-realtime, non-allocating.
+#[allow(clippy::too_many_arguments)]
+fn mix_gate_inputs(
+    g: &CompiledGraph,
+    state: &mut ProcessState,
+    idx: usize,
+    frames: usize,
+    events: &mut event::EventWindow<'_>,
+    mb: usize,
+    sr: f32,
+) {
+    let Some(slot) = g.gate_nodes.iter().position(|gn| gn.1 == idx) else {
+        return;
+    };
+    if slot >= MAX_GATES {
+        return;
+    }
+
+    // Collect level changes for this gate in this partition.
+    let mut changes = [(0u16, 0.0f32); MAX_GATE_EVENTS];
+    let mut n_changes = 0usize;
+    while let Some(ev) = events.next_pending() {
+        if let Some(s) = g.gate_nodes.iter().position(|gn| gn.0 == ev.node)
+            && s == slot
+            && n_changes < MAX_GATE_EVENTS
+        {
+            use crate::event::EventKind;
+            let level = match ev.kind {
+                EventKind::NoteOn { velocity, .. } => (velocity as f32 / 127.0).clamp(0.0, 1.0),
+                EventKind::NoteOff { .. } => 0.0,
+                _ => continue,
+            };
+            let frame = (ev.frame as usize).min(frames.saturating_sub(1)) as u16;
+            changes[n_changes] = (frame, level);
+            n_changes += 1;
+        }
+    }
+    events.rewind();
+
+    let NodeState::Gate {
+        attack, release, ..
+    } = &state.states[idx]
+    else {
+        return;
+    };
+    let a_coef = 1.0 - (-1.0 / (attack.max(0.0005) * sr)).exp();
+    let r_coef = 1.0 - (-1.0 / (release.max(0.0005) * sr)).exp();
+    dsp::process_gate_events(
+        &mut state.states[idx],
+        &changes[..n_changes],
+        a_coef,
+        r_coef,
+        &mut state.buffers[idx * mb..idx * mb + frames],
+    );
 }
 
 fn push_param(

@@ -737,6 +737,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "moredata-scheduler"
+version = "0.1.0"
+dependencies = [
+ "moredata-core",
+]
+
+[[package]]
 name = "moredata-tui"
 version = "0.1.0"
 dependencies = [

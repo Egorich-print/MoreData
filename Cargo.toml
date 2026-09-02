@@ -3,6 +3,7 @@ members = [
     "crates/moredata-core",
     "crates/moredata-runtime",
     "crates/moredata-audio",
+    "crates/moredata-scheduler",
     "crates/moredata-plugin",
     "crates/moredata-cli",
     "crates/moredata-tui",

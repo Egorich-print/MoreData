@@ -10,7 +10,7 @@ mod report;
 
 pub use compile::{CompileOptions, CompiledGraph, ParamSnapshot, ProcessState};
 pub use error::GraphError;
-pub use event::{Event, EventKind, EventQueue};
+pub use event::{Event, EventKind, EventQueue, EventWindow};
 pub use graph::{Connection, Graph, Node, NodeId, NodeKind, PortDir, PortSpec};
 pub use project::Project;
 pub use report::{Diagnostics, StatusReport};
