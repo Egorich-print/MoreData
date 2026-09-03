@@ -1,0 +1,24 @@
+[package]
+name = "moredata-pipewire"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PipeWire backend for MoreData realtime audio platform (Linux only, requires libpipewire-0.3)"
+publish = false
+
+[features]
+default = []
+pipewire-system = ["moredata-audio", "pipewire"]
+
+[dependencies]
+moredata-core.workspace = true
+moredata-audio = { path = "../moredata-audio", optional = true }
+moredata-runtime.workspace = true
+moredata-scheduler.workspace = true
+pipewire = { version = "0.10", features = ["v0_3_65"], optional = true }
+serde.workspace = true
+thiserror.workspace = true
+libc = "0.2"

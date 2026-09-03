@@ -22,6 +22,7 @@ repository = "https://github.com/Egorich-print/MoreData"
 moredata-core = { path = "crates/moredata-core" }
 moredata-runtime = { path = "crates/moredata-runtime" }
 moredata-audio = { path = "crates/moredata-audio" }
+moredata-scheduler = { path = "crates/moredata-scheduler" }
 moredata-plugin = { path = "crates/moredata-plugin" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

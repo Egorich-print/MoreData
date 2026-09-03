@@ -6,8 +6,13 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Audio backends for MoreData (cpal host, wav, null; PipeWire adapter later)"
+description = "Audio backends for MoreData (cpal, PipeWire, WAV, null)"
 publish = false
+
+[features]
+default = ["cpal"]
+cpal = ["dep:cpal"]
+pipewire = []
 
 [dependencies]
 moredata-core.workspace = true
@@ -15,4 +20,4 @@ moredata-runtime.workspace = true
 thiserror.workspace = true
 hound.workspace = true
 serde.workspace = true
-cpal.workspace = true
+cpal = { workspace = true, optional = true }

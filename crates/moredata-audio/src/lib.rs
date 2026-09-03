@@ -1,4 +1,5 @@
-//! AudioBackend trait. PipeWire is a future impl; night-1: cpal, wav, null.
+//! AudioBackend trait. PipeWire available via separate moredata-pipewire crate;
+//! cpal, wav, null always available.
 
 mod cpal_backend;
 mod null;
@@ -8,7 +9,7 @@ use moredata_core::Diagnostics;
 use serde::Serialize;
 use thiserror::Error;
 
-pub use cpal_backend::{CpalBackend, PlaySession, play, play_once};
+pub use cpal_backend::{CpalBackend, play, play_once};
 pub use null::NullBackend;
 pub use wav::render_wav;
 
