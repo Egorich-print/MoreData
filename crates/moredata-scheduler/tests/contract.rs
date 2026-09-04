@@ -69,7 +69,7 @@ fn scheduler_run_block_matches_serial() {
     let (cg_a, mut st_a) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
     let (cg_b, mut st_b) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
     let plan = Plan::from_graph(&cg_a);
-    let sched = Scheduler::new(4, plan);
+    let sched = Scheduler::new(4, plan).with_pool();
 
     let mut buf_serial = [0f32; 64];
     let mut buf_sched = [0f32; 64];
@@ -114,7 +114,7 @@ fn scheduler_run_block_zero_allocations() {
     let g = make_wide_graph();
     let (cg, mut st) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
     let plan = Plan::from_graph(&cg);
-    let sched = Scheduler::new(4, plan);
+    let sched = Scheduler::new(4, plan).with_pool();
 
     let mut buf = [0f32; 64];
     let mut window = moredata_core::event::EventWindow::empty();
@@ -137,7 +137,7 @@ fn scheduler_stress_bounded_block_time() {
     let g = make_wide_graph();
     let (cg, mut st) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
     let plan = Plan::from_graph(&cg);
-    let sched = Scheduler::new(4, plan);
+    let sched = Scheduler::new(4, plan).with_pool();
 
     let mut buf = [0f32; 64];
     let mut window = moredata_core::event::EventWindow::empty();
@@ -158,7 +158,7 @@ fn parallel_pool_matches_serial() {
     let (cg_a, mut st_a) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
     let (cg_b, mut st_b) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
     let plan = Plan::from_graph(&cg_a);
-    let sched = Scheduler::new(4, plan);
+    let sched = Scheduler::new(4, plan).with_pool();
 
     let mut buf_serial = [0f32; 64];
     let mut buf_par = [0f32; 64];
@@ -183,7 +183,7 @@ fn _parallel_pool_stress() {
     let g = make_wide_graph();
     let (cg, mut st) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
     let plan = Plan::from_graph(&cg);
-    let sched = Scheduler::new(4, plan);
+    let sched = Scheduler::new(4, plan).with_pool();
 
     let mut buf = [0f32; 64];
     let mut window = moredata_core::event::EventWindow::empty();
@@ -202,7 +202,7 @@ fn _parallel_pool_zero_allocations() {
     let g = make_wide_graph();
     let (cg, mut st) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
     let plan = Plan::from_graph(&cg);
-    let sched = Scheduler::new(4, plan);
+    let sched = Scheduler::new(4, plan).with_pool();
 
     let mut buf = [0f32; 64];
     let mut window = moredata_core::event::EventWindow::empty();
@@ -218,4 +218,64 @@ fn _parallel_pool_zero_allocations() {
     let n = LOCAL_ALLOCS.with(|c| c.get());
     TRACKING.store(0, std::sync::atomic::Ordering::SeqCst);
     assert_eq!(n, 0, "parallel pool allocated {n} times");
+}
+
+// --- M5.5.1/M5.5.2 regression tests -------------------------------------
+
+#[test]
+fn pool_narrower_than_partition_completes() {
+    // Regression: previously done.store(partition_len) deadlocked when
+    // the pool had fewer workers than nodes in a partition.
+    let g = make_wide_graph(); // first partition has 4 oscillators
+    let (cg, mut st) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
+    let plan = Plan::from_graph(&cg);
+    let sched = Scheduler::new(2, plan).with_pool(); // only 2 workers
+
+    let mut buf = [0f32; 64];
+    let mut window = moredata_core::event::EventWindow::empty();
+    for _ in 0..16 {
+        sched.run_block_parallel(&cg, &mut st, 64, &mut buf, &mut window);
+    }
+    assert!(buf.iter().any(|s| s.abs() > 0.0), "pool produced silence");
+}
+
+#[test]
+fn pool_drop_does_not_hang() {
+    // Regression: lost-wakeup between slot check and cvar.wait used to
+    // hang Drop::join forever.
+    for _ in 0..10 {
+        let g = make_wide_graph();
+        let (cg, mut st) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
+        let plan = Plan::from_graph(&cg);
+        let sched = Scheduler::new(4, plan).with_pool();
+        let mut buf = [0f32; 64];
+        let mut window = moredata_core::event::EventWindow::empty();
+        sched.run_block_parallel(&cg, &mut st, 64, &mut buf, &mut window);
+        drop(sched); // must terminate promptly
+    }
+}
+
+#[test]
+fn parallel_pool_actually_uses_pool_and_matches_serial() {
+    // Regression for the test-suite bug: previous "pool" tests never
+    // called .with_pool(), so they exercised the inline path only.
+    let g = make_wide_graph();
+    let (cg_a, mut st_a) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
+    let (cg_b, mut st_b) = CompiledGraph::compile(&g, CompileOptions::default()).unwrap();
+    let plan = Plan::from_graph(&cg_a);
+    let sched = Scheduler::new(4, plan).with_pool();
+
+    let mut buf_serial = [0f32; 64];
+    let mut buf_par = [0f32; 64];
+    let mut window = moredata_core::event::EventWindow::empty();
+    for _ in 0..64 {
+        cg_a.process(&mut st_a, 64, &mut buf_serial);
+        sched.run_block_parallel(&cg_b, &mut st_b, 64, &mut buf_par, &mut window);
+    }
+    let max_diff = buf_serial
+        .iter()
+        .zip(buf_par.iter())
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0f32, f32::max);
+    assert!(max_diff < 1e-2, "max diff {max_diff}");
 }

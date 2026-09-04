@@ -76,9 +76,13 @@ struct PoolInner {
     cvar: Condvar,
     /// Lock around `slot` only for the Condvar wait predicate.
     /// Audio thread uses `AtomicPtr` directly; the lock is here
-    /// only to satisfy `Condvar::wait`.
+    /// only to satisfy `Condvar::wait_while`.
     state: Mutex<()>,
     shutdown: AtomicBool,
+    /// Monotonic publish counter. The audio thread increments it once
+    /// per dispatched partition; workers track the last epoch they
+    /// served and never process the same dispatch twice.
+    epoch: AtomicUsize,
 }
 
 /// Worker pool. One shared instance, owned by the `Scheduler`.
@@ -95,6 +99,7 @@ impl WorkerPool {
             cvar: Condvar::new(),
             state: Mutex::new(()),
             shutdown: AtomicBool::new(false),
+            epoch: AtomicUsize::new(0),
         });
         let mut handles = Vec::with_capacity(count);
         for id in 0..count {
@@ -119,11 +124,12 @@ impl WorkerPool {
 
 impl Drop for WorkerPool {
     fn drop(&mut self) {
-        self.inner.shutdown.store(true, Ordering::Release);
-        // Publish a sentinel non-null pointer so all workers wake
-        // from the Condvar and observe `shutdown`.
-        let sentinel: *mut Work = std::ptr::dangling_mut::<Work>();
-        self.inner.slot.store(sentinel, Ordering::Release);
+        // M5.5.1: set shutdown under the lock so the wait_while
+        // predicate cannot miss it (lost wakeup -> hung join).
+        {
+            let _g = self.inner.state.lock().unwrap();
+            self.inner.shutdown.store(true, Ordering::Release);
+        }
         self.inner.cvar.notify_all();
         for h in self.handles.drain(..) {
             let _ = h.join();
@@ -134,21 +140,33 @@ impl Drop for WorkerPool {
 fn worker_loop(id: usize, inner: Arc<PoolInner>) {
     let _ = id;
     let mut guard = inner.state.lock().unwrap();
+    let mut served_epoch = 0usize;
     loop {
+        // Wait with predicate: wakes on a NEW dispatch (epoch advanced),
+        // or shutdown. A notify racing with `wait` cannot be lost: the
+        // predicate is re-evaluated while holding the mutex. The epoch
+        // check prevents a worker from serving the same partition twice
+        // (double-decrementing `done` corrupts the count).
+        guard = inner
+            .cvar
+            .wait_while(guard, |_| {
+                !inner.shutdown.load(Ordering::Acquire)
+                    && (inner.slot.load(Ordering::Acquire).is_null()
+                        || inner.epoch.load(Ordering::Acquire) == served_epoch)
+            })
+            .unwrap();
         if inner.shutdown.load(Ordering::Acquire) {
             return;
         }
         let ptr = inner.slot.load(Ordering::Acquire);
         if ptr.is_null() {
-            guard = inner.cvar.wait(guard).unwrap();
+            // Spurious wake (slot nulled between partitions).
             continue;
         }
+        served_epoch = inner.epoch.load(Ordering::Acquire);
         // Drop the lock before running the partition so the audio
         // thread can republish a new pointer for the next partition.
         drop(guard);
-        if inner.shutdown.load(Ordering::Acquire) {
-            return;
-        }
         // SAFETY: `ptr` is a stack pointer of the audio thread.
         // The audio thread waits on `done` (an AtomicUsize in
         // its own `done_counters` vector) before reusing the
@@ -361,7 +379,11 @@ impl Scheduler {
             // `process_leaf_node`, which mutates only the worker's
             // own `state.buffers[idx*mb..]` and `state.states[idx]`.
             let done = &self.done_counters[pi];
-            done.store(len, Ordering::Release);
+            // Count workers, not nodes: every worker decrements `done`
+            // exactly once per partition, regardless of how many node
+            // indices it claimed. Initializing to `len` would deadlock
+            // whenever partition_len > pool workers (M5.5.2 fix).
+            done.store(pool.len(), Ordering::Release);
             // Reset cursor to 0; the audio thread is the only
             // place that touches it before notifying workers.
             self.cursors[pi].store(0, Ordering::Release);
@@ -375,7 +397,16 @@ impl Scheduler {
                 (*desc).done = done as *const _;
                 (*desc).cursor = &self.cursors[pi] as *const AtomicUsize;
             }
-            pool.inner.slot.store(desc, Ordering::Release);
+            // Publish under the mutex: the workers' wait_while predicate
+            // reads slot/epoch, and publishing without holding the lock
+            // loses wakeups (notify fired between predicate evaluation
+            // and sleep -> deadlock). The critical section is two
+            // atomic stores; workers hold the lock only while asleep.
+            {
+                let _g = pool.inner.state.lock().unwrap();
+                pool.inner.epoch.fetch_add(1, Ordering::AcqRel);
+                pool.inner.slot.store(desc, Ordering::Release);
+            }
             pool.inner.cvar.notify_all();
             while done.load(Ordering::Acquire) > 0 {
                 std::hint::spin_loop();

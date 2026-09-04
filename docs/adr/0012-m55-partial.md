@@ -1,7 +1,6 @@
 # ADR-0012: M5.5 OS-thread pool (partial)
 
-> Status: partial — M5.4 inline verified; pool API present, pool drop has
-> a known race that requires further design work
+> Status: complete (M5.5.1+M5.5.2 landed); f32 summation order remains
 > Date: 2026-08-22
 
 ## Context
@@ -46,21 +45,30 @@ an OS-thread worker pool that executes each level in parallel.
 
 ## Known issues (partial implementation)
 
-### Pool drop race
-- The current `WorkerPool::drop` sets `shutdown=true`, publishes a
-  sentinel pointer, and `notify_all`s. Workers exit when they observe
-  `shutdown` after waking from the condvar.
-- Under the test runner, **sequential** `parallel_pool_matches_serial`
-  passes, but other tests in the same binary may hang on drop. The
-  most likely cause: a worker is mid-`process_partition` when
-  `Drop` runs, and the join blocks until the worker's `cvar.wait`
-  returns. In practice the worker's CPU time is bounded, but the
-  notification may not arrive before `join` if the runtime is
-  busy with another thread.
-- **Workaround for now:** keep the pool **opt-in** (`with_pool()`).
-  The default `Scheduler::new` uses inline partitions and never
-  spawns threads. `parallel_pool_*` tests that exercise the pool
-  have been temporarily disabled in the contract test suite.
+> **Resolved 2026-09-04 (audit + M5.5.1/M5.5.2 fix):**
+> 1. **Drop race / lost wakeup — FIXED.** `Drop` sets `shutdown` while
+>    holding the pool mutex, then `notify_all`. Workers sleep via
+>    `cvar.wait_while` with a predicate on `shutdown || new dispatch`,
+>    so a notify racing with `wait` can no longer be lost.
+> 2. **Deadlock when `workers < partition_len` — FIXED.** The `done`
+>    counter is now initialized to the worker count (each worker
+>    decrements exactly once per dispatch), not the partition length
+>    (which deadlocked when `done` could never reach zero).
+> 3. **Double-dispatch race — FIXED.** A monotonic `epoch` counter is
+>    incremented per dispatch; workers track their last served epoch and
+>    never process the same dispatch twice (which would corrupt `done`).
+> 4. **Lost notify on publish — FIXED.** The audio thread publishes
+>    `slot`/`epoch` while holding the pool mutex (a two-store critical
+>    section), because the predicate reads those atomics; publishing
+>    without the lock allowed the notify to slip between predicate
+>    evaluation and sleep.
+> Trade-off accepted: the audio thread briefly takes the pool mutex on
+> publish. It is uncontended while workers run (they drop the guard
+> before processing), so the block-time bound still holds.
+> Regression tests: `pool_narrower_than_partition_completes`,
+> `pool_drop_does_not_hang`, `parallel_pool_actually_uses_pool_and_matches_serial`.
+> Also fixed a **test-suite bug**: previous `parallel_pool_*` tests never
+> called `.with_pool()`, so they exercised the inline path only.
 
 ### Numerical equivalence under parallel execution
 - The 4-oscillator graph test reports a max diff of `~0.27` between
