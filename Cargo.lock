@@ -722,6 +722,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "moredata-pipewire"
+version = "0.1.0"
+dependencies = [
+ "moredata-audio",
+ "moredata-core",
+ "moredata-runtime",
+ "moredata-scheduler",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "moredata-plugin"
 version = "0.1.0"
 dependencies = [

@@ -6,19 +6,18 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "PipeWire backend for MoreData realtime audio platform (Linux only, requires libpipewire-0.3)"
+description = "PipeWire backend for MoreData (Linux-only, requires libpipewire-0.3; stub without feature)"
 publish = false
 
 [features]
 default = []
-pipewire-system = ["moredata-audio", "pipewire"]
+# Real PipeWire stream via libpipewire-0.3 — Linux only, M5.6 in progress.
+pipewire-system = []
 
 [dependencies]
 moredata-core.workspace = true
-moredata-audio = { path = "../moredata-audio", optional = true }
+moredata-audio.workspace = true
 moredata-runtime.workspace = true
 moredata-scheduler.workspace = true
-pipewire = { version = "0.10", features = ["v0_3_65"], optional = true }
 serde.workspace = true
 thiserror.workspace = true
-libc = "0.2"

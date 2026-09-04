@@ -4,6 +4,7 @@ members = [
     "crates/moredata-runtime",
     "crates/moredata-audio",
     "crates/moredata-scheduler",
+    "crates/moredata-pipewire",
     "crates/moredata-plugin",
     "crates/moredata-cli",
     "crates/moredata-tui",
@@ -23,6 +24,7 @@ moredata-core = { path = "crates/moredata-core" }
 moredata-runtime = { path = "crates/moredata-runtime" }
 moredata-audio = { path = "crates/moredata-audio" }
 moredata-scheduler = { path = "crates/moredata-scheduler" }
+moredata-pipewire = { path = "crates/moredata-pipewire" }
 moredata-plugin = { path = "crates/moredata-plugin" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
