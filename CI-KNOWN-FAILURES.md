@@ -82,7 +82,41 @@ assertion as well; leaving it as a bare wall-clock number keeps the test flaky.
 
 ---
 
-## 3. Scope of the CI gate
+## 3. `stress_control_churn_vs_rt` — the same race in another crate — **open**
+
+Jenkins build `#9` (branch `mission/moredata`, 2026-11-02) failed here — a
+different test and a different crate than items 1 and 2, so it was not covered
+by them:
+
+**Symptom**
+
+```
+---- stress_control_churn_vs_rt stdout ----
+thread 'stress_control_churn_vs_rt' panicked at crates/moredata-runtime/tests/contract.rs:277:5:
+max block 821885ns exceeds contract
+test result: FAILED. 8 passed; 1 failed; ...
+```
+
+**Where** — `crates/moredata-runtime/tests/contract.rs:277`:
+
+```rust
+assert!(max_ns < 500_000, "max block {max_ns}ns exceeds contract");
+```
+
+Bound 0.5 ms, measured peak 821 885 ns (×1.6) on the Jenkins agent. Same shape
+as item 1 and item 2: a wall-clock bound raced against scheduling jitter, in a
+*runtime* crate this time — so fixing items 1 and 2 must be reviewed for this
+assertion too, otherwise the crate just moves the red to a different file.
+
+**Verification**
+
+```bash
+cargo test -p moredata-runtime --test contract
+```
+
+---
+
+## 4. Scope of the CI gate
 
 The repository's own workflow (`.github/workflows/ci.yml`) runs
 `cargo test --workspace --verbose` in the **debug** profile. The timing bounds
