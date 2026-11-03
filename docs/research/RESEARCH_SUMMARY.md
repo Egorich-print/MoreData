@@ -25,8 +25,8 @@ Not a fork of Pure Data, PlugData, JUCE, or libpd.
 
 Read from `Obsidian Vault/Knowledge/System`:
 
-- Three layers: Execution (`~/ai-workstation/Projects/`), Knowledge (Obsidian), Showcase (`Documents/Проекты/`)
-- New software project lives in `~/ai-workstation/Projects/MoreData/`
+- Three layers: Execution (`/Volumes/Netac_SSD/ai-workstation/Projects/`), Knowledge (Obsidian), Showcase (`Documents/Проекты/`)
+- New software project lives in `/Volumes/Netac_SSD/ai-workstation/Projects/MoreData/`
 - Registry entry + Obsidian project note + showcase README
 - Hardware siblings: Polivoks, Theremin, Aelita (analog synths) — MoreData is the **digital graph/runtime**, not a PCB
 - Hibiki is a Tauri music *player* (cpal + Mutex in callback). MoreData must not copy that realtime model

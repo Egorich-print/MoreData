@@ -1,6 +1,6 @@
 # Repository guide
 
-Canonical path: `~/ai-workstation/Projects/MoreData/`
+Canonical path: `/Volumes/Netac_SSD/ai-workstation/Projects/MoreData/`
 
 ```
 crates/moredata-core      graph + DSP
